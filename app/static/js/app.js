@@ -129,6 +129,7 @@ const scoreboard       = document.getElementById("scoreboard");
 const wordDisplay      = document.getElementById("wordDisplay");
 const feedbackCorrect  = document.getElementById("feedbackCorrect");
 const feedbackWrong    = document.getElementById("feedbackWrong");
+const feedbackWord     = document.getElementById("feedbackWord");
 const starsCanvas      = document.getElementById("starsCanvas");
 const btnCorrect       = document.getElementById("btnCorrect");
 const btnWrong         = document.getElementById("btnWrong");
@@ -729,15 +730,16 @@ btnCorrect?.addEventListener("click", async () => {
     showToast("Could not record score: " + err.message, "error");
   }
 
-  // Show CORRECT feedback + stars
-  showFeedback("correct");
+  // Show CORRECT feedback + stars — reveal the actual word for 2 seconds
+  const correctWord = gameState.words[gameState.currentIndex];
+  showFeedback("correct", correctWord);
   spawnStars();
 
   setTimeout(() => {
     hideFeedback();
     advancePlayer();
     nextWord();
-  }, 1000);
+  }, 2000);
 });
 
 // ── WRONG ──
@@ -819,9 +821,11 @@ function resetGameState() {
 
 // ── Feedback ──
 
-function showFeedback(type) {
+function showFeedback(type, word = null) {
   hideFeedback();
   if (type === "correct") {
+    // Show the actual word so everyone can see what it was
+    feedbackWord.textContent = word ? `THE WORD IS  ${word.toUpperCase()}` : "";
     feedbackCorrect.hidden = false;
   } else {
     feedbackWrong.hidden = false;

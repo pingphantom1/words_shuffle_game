@@ -197,7 +197,10 @@
       </div>
       <!-- Feedback overlays -->
       <div class="feedback feedback--correct" id="feedbackCorrect" aria-live="assertive" hidden>
-        <span class="feedback__label">CORRECT!</span>
+        <div class="feedback__inner">
+          <span class="feedback__label">CORRECT!</span>
+          <span class="feedback__word-reveal" id="feedbackWord"></span>
+        </div>
       </div>
       <div class="feedback feedback--wrong" id="feedbackWrong" aria-live="assertive" hidden>
         <span class="feedback__label">WRONG!</span>

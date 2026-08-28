@@ -193,26 +193,26 @@ function updateWordCount() {
 
 function parseWords(raw) {
   /**
-   * Accept:
-   *  - One word per line
-   *  - Comma-separated
-   *  - Space-separated (when pasted)
-   * De-duplicate case-insensitively.
+   * Rules:
+   *  - Each line is ONE complete entry (e.g. "1 PETER" stays as "1 PETER")
+   *  - A comma inside a line also separates entries (paste-friendly)
+   *  - Blank lines / entries are ignored
+   *  - De-duplicate case-insensitively
    */
-  const lines = raw.split(/[\n,]+/);
-  const seen  = new Set();
-  const out   = [];
-  for (const line of lines) {
-    // each line might still have multiple space-separated tokens
-    const tokens = line.trim().split(/\s+/).filter(Boolean);
-    for (const tok of tokens) {
-      const clean = tok.trim();
-      if (clean && !seen.has(clean.toLowerCase())) {
-        seen.add(clean.toLowerCase());
-        out.push(clean);
-      }
+  const seen = new Set();
+  const out  = [];
+
+  // Split only on newlines and commas — NOT on spaces
+  const entries = raw.split(/[\n,]+/);
+
+  for (const entry of entries) {
+    const clean = entry.trim();
+    if (clean && !seen.has(clean.toLowerCase())) {
+      seen.add(clean.toLowerCase());
+      out.push(clean);
     }
   }
+
   return out;
 }
 
@@ -651,17 +651,20 @@ function shuffleArray(arr) {
 }
 
 /**
- * Shuffle the characters of a word, guaranteeing the result is different
- * from the original (up to 30 attempts). Returns the shuffled characters
- * separated by spaces so each letter reads clearly on screen.
+ * Shuffle the characters of an entry (word or phrase like "1 PETER"),
+ * guaranteeing the result differs from the original (up to 30 attempts).
+ * Spaces are stripped before shuffling so only meaningful characters are
+ * shown — each character is then separated by two spaces for readability.
+ * e.g. "1 PETER" → "E  T  R  1  E  P"
  */
 function shuffleWord(word) {
-  const chars = word.toUpperCase().split("");
+  // Strip all spaces — treat the entry as a sequence of non-space characters
+  const chars = word.toUpperCase().replace(/\s+/g, "").split("");
 
-  // Single-character or all-same-character words can't be shuffled differently
+  // Edge case: single character or all-same characters
   const allSame = chars.every(c => c === chars[0]);
   if (chars.length <= 1 || allSame) {
-    return chars.join(" ");
+    return chars.join("  ");
   }
 
   const original = chars.join("");

@@ -644,18 +644,20 @@ a:hover { text-decoration: underline; }
   background: var(--clr-surface);
   border-bottom: 1px solid var(--clr-border);
   flex-shrink: 0;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 .score-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: .2rem;
-  padding: .6rem 1.1rem;
+  gap: .25rem;
+  padding: .75rem 1.4rem;
   background: var(--clr-surface-2);
   border: 2px solid var(--clr-border);
   border-radius: var(--radius-md);
-  min-width: 80px;
+  min-width: 90px;
   transition: border-color var(--t-fast), background var(--t-fast);
 }
 
@@ -711,7 +713,7 @@ a:hover { text-decoration: underline; }
 
 .word-display {
   font-family: var(--font-display);
-  font-size: clamp(2.5rem, 8vw, 6rem);
+  font-size: clamp(3.5rem, 10vw, 8rem);
   font-weight: 800;
   letter-spacing: .12em;
   text-transform: uppercase;

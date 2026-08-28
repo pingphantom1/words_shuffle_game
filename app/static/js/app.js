@@ -618,7 +618,7 @@ function openGameModal() {
   gameWordTotal.textContent = gameState.words.length;
   showCurrentWord();
 
-  // Reset controls
+  // Reset controls — NEXT starts disabled (no wrong has happened yet)
   setGameControls({ correct: true, wrong: true, next: false, end: true });
 
   openModal(gameModal);
@@ -703,17 +703,24 @@ btnCorrect?.addEventListener("click", async () => {
 // ── WRONG ──
 btnWrong?.addEventListener("click", () => {
   if (btnWrong.disabled) return;
-  setGameControls({ correct: false, wrong: false, next: true, end: true });
-  gameState.waitingForNext = true;
+  // Disable all controls during the 1s flash
+  setGameControls({ correct: false, wrong: false, next: false, end: false });
 
   showFeedback("wrong");
-  setTimeout(() => hideFeedback(), 1000);
+
+  setTimeout(() => {
+    hideFeedback();
+    // Move to next player — the same word stays on screen
+    advancePlayer();
+    // Re-enable all controls so the next player can attempt the same word
+    setGameControls({ correct: true, wrong: true, next: true, end: true });
+  }, 1000);
 });
 
 // ── NEXT ──
+// Skips the current word without awarding points and moves to the next player.
 btnNext?.addEventListener("click", () => {
   if (btnNext.disabled) return;
-  gameState.waitingForNext = false;
   advancePlayer();
   nextWord();
 });

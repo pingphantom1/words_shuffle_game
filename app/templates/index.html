@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Word Shuffle Game{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+
+  <!-- ── Dashboard Header ────────────────────────────────────── -->
+  <div class="dashboard-header">
+    <div class="dashboard-header__text">
+      <h1 class="dashboard-title">Game Slips</h1>
+      <p class="dashboard-subtitle">
+        Create and manage your word collections. Start a game any time.
+      </p>
+    </div>
+    <button class="btn btn--primary btn--lg" id="btnNewSlip" aria-haspopup="dialog">
+      <span class="btn-icon">＋</span> New Game Slip
+    </button>
+  </div>
+
+  <!-- ── Slips Grid ──────────────────────────────────────────── -->
+  <div class="slips-grid" id="slipsGrid" role="list" aria-label="Game Slips">
+    {% if slips %}
+      {% for slip in slips %}
+      <article
+        class="slip-card{% if slip.is_finished %} slip-card--finished{% endif %}"
+        data-slip-id="{{ slip.id }}"
+        data-finished="{{ 'true' if slip.is_finished else 'false' }}"
+        role="listitem"
+      >
+        <div class="slip-card__body">
+          <div class="slip-card__meta">
+            <span class="slip-badge slip-badge--words">
+              {{ slip.words|length }} word{{ 's' if slip.words|length != 1 else '' }}
+            </span>
+            <span class="slip-badge slip-badge--players">
+              {{ slip.players|length }} player{{ 's' if slip.players|length != 1 else '' }}
+            </span>
+            {% if slip.is_finished %}
+            <span class="slip-badge slip-badge--done">Finished</span>
+            {% endif %}
+          </div>
+
+          <h2 class="slip-card__title">{{ slip.title }}</h2>
+
+          <p class="slip-card__date">
+            Created {{ slip.created_at.strftime('%b %d, %Y') }}
+          </p>
+        </div>
+
+        <div class="slip-card__actions">
+          <button
+            class="btn btn--ghost btn--sm btn-edit"
+            aria-label="Edit {{ slip.title }}"
+            {% if slip.is_finished %}disabled{% endif %}
+          >Edit</button>
+
+          <button
+            class="btn btn--danger-ghost btn--sm btn-delete"
+            aria-label="Delete {{ slip.title }}"
+          >Delete</button>
+
+          <button
+            class="btn btn--warning btn--sm btn-finish"
+            aria-label="{% if slip.is_finished %}Unfinish{% else %}Finish{% endif %} {{ slip.title }}"
+          >{{ 'Unfinish' if slip.is_finished else 'Finish' }}</button>
+
+          <button
+            class="btn btn--success btn--sm btn-start"
+            aria-label="Start {{ slip.title }}"
+            {% if slip.is_finished %}disabled{% endif %}
+          >Start</button>
+        </div>
+      </article>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state" id="emptyState">
+        <div class="empty-state__icon">📋</div>
+        <h2 class="empty-state__title">No game slips yet</h2>
+        <p class="empty-state__text">
+          Click <strong>New Game Slip</strong> to create your first word collection.
+        </p>
+      </div>
+    {% endif %}
+  </div>
+
+</div><!-- /.dashboard -->
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: Create / Edit Game Slip
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="slipModal" role="dialog" aria-modal="true" aria-labelledby="slipModalTitle" hidden>
+  <div class="modal">
+    <div class="modal__header">
+      <h2 class="modal__title" id="slipModalTitle">New Game Slip</h2>
+      <button class="modal__close" id="slipModalClose" aria-label="Close">&times;</button>
+    </div>
+
+    <div class="modal__body">
+      <!-- Title -->
+      <div class="form-group">
+        <label class="form-label" for="slipTitle">Slip Title <span class="req">*</span></label>
+        <input
+          type="text"
+          id="slipTitle"
+          class="form-control"
+          placeholder="e.g. Animals Round"
+          maxlength="120"
+          autocomplete="off"
+          required
+        />
+      </div>
+
+      <!-- Players -->
+      <div class="form-group">
+        <label class="form-label">Players</label>
+        <div class="player-list" id="playerList">
+          <!-- Player rows injected by JS -->
+        </div>
+        <button type="button" class="btn btn--ghost btn--sm" id="btnAddPlayer">
+          + Add Player
+        </button>
+      </div>
+
+      <!-- Words -->
+      <div class="form-group">
+        <label class="form-label" for="wordsInput">
+          Words <span class="req">*</span>
+          <span class="form-hint">One per line — or paste a comma/space-separated list</span>
+        </label>
+        <textarea
+          id="wordsInput"
+          class="form-control form-control--textarea"
+          placeholder="apple&#10;banana&#10;cherry"
+          rows="8"
+          spellcheck="false"
+        ></textarea>
+        <p class="word-count" id="wordCount">0 words</p>
+      </div>
+    </div>
+
+    <div class="modal__footer">
+      <button class="btn btn--ghost" id="slipModalCancel">Cancel</button>
+      <button class="btn btn--primary" id="slipModalSave">Save Slip</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: Choose First Player (before game starts)
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="startModal" role="dialog" aria-modal="true" aria-labelledby="startModalTitle" hidden>
+  <div class="modal modal--sm">
+    <div class="modal__header">
+      <h2 class="modal__title" id="startModalTitle">Who Goes First?</h2>
+      <button class="modal__close" id="startModalClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal__body">
+      <p class="start-modal__desc">Choose the player who will answer first.</p>
+      <div class="player-choose-list" id="playerChooseList">
+        <!-- Injected by JS -->
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--ghost" id="startModalCancel">Cancel</button>
+      <button class="btn btn--success btn--lg" id="startModalConfirm" disabled>Start Game</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: Active Game Window
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay modal-overlay--game" id="gameModal" role="dialog" aria-modal="true" aria-labelledby="gameModalTitle" hidden>
+  <div class="modal modal--game">
+
+    <!-- Game Header -->
+    <div class="game-header">
+      <h2 class="game-header__title" id="gameModalTitle">Word Shuffle</h2>
+      <div class="game-header__progress">
+        <span id="gameWordIndex">1</span> / <span id="gameWordTotal">0</span>
+      </div>
+    </div>
+
+    <!-- Score Board -->
+    <div class="scoreboard" id="scoreboard" role="region" aria-label="Scores">
+      <!-- Player score cards injected by JS -->
+    </div>
+
+    <!-- Word Display -->
+    <div class="word-stage" id="wordStage" aria-live="polite" aria-atomic="true">
+      <div class="word-display" id="wordDisplay">
+        <!-- Shuffled word rendered here -->
+      </div>
+      <!-- Feedback overlays -->
+      <div class="feedback feedback--correct" id="feedbackCorrect" aria-live="assertive" hidden>
+        <span class="feedback__label">CORRECT!</span>
+      </div>
+      <div class="feedback feedback--wrong" id="feedbackWrong" aria-live="assertive" hidden>
+        <span class="feedback__label">WRONG!</span>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="game-controls" role="group" aria-label="Game controls">
+      <button class="game-btn game-btn--correct" id="btnCorrect">✔ CORRECT</button>
+      <button class="game-btn game-btn--wrong"   id="btnWrong">✘ WRONG</button>
+      <button class="game-btn game-btn--next"    id="btnNext" disabled>▶ NEXT</button>
+      <button class="game-btn game-btn--end"     id="btnEnd">⏹ END</button>
+    </div>
+
+  </div><!-- /.modal--game -->
+
+  <!-- Star particles container (appended by JS) -->
+  <div class="stars-canvas" id="starsCanvas" aria-hidden="true"></div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: Confirm Delete
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="deleteModal" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle" hidden>
+  <div class="modal modal--sm modal--danger">
+    <div class="modal__header">
+      <h2 class="modal__title" id="deleteModalTitle">Delete Slip?</h2>
+      <button class="modal__close" id="deleteModalClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal__body">
+      <p>Are you sure you want to permanently delete <strong id="deleteSlipName"></strong>?
+      This cannot be undone.</p>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--ghost" id="deleteModalCancel">Cancel</button>
+      <button class="btn btn--danger" id="deleteModalConfirm">Yes, Delete</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -6,10 +6,14 @@ Schema overview
 GameSlip  ─── has many ──▶  Word
           ─── has many ──▶  Player
           ─── has many ──▶  GameSession ─── has many ──▶  Score (per player per session)
+
+Note: We use the classic (non-annotated) declarative style so that plain Python
+type comments on attributes don't conflict with SQLAlchemy 2's strict Annotated
+Declarative form.
 """
 from __future__ import annotations
 
-import re
+import html
 from datetime import datetime, timezone
 
 from flask_sqlalchemy import SQLAlchemy
@@ -25,11 +29,6 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _sanitize(value: str, max_len: int = 500) -> str:
-    """Strip leading/trailing whitespace and truncate to max_len."""
-    return value.strip()[:max_len]
-
-
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -39,34 +38,32 @@ class GameSlip(db.Model):
 
     __tablename__ = "game_slip"
 
-    id: int = db.Column(db.Integer, primary_key=True)
-    title: str = db.Column(db.String(120), nullable=False)
-    is_finished: bool = db.Column(db.Boolean, default=False, nullable=False)
-    created_at: datetime = db.Column(
-        db.DateTime(timezone=True), default=_utcnow, nullable=False
-    )
-    updated_at: datetime = db.Column(
+    id          = db.Column(db.Integer, primary_key=True)
+    title       = db.Column(db.String(120), nullable=False)
+    is_finished = db.Column(db.Boolean, default=False, nullable=False)
+    created_at  = db.Column(db.DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at  = db.Column(
         db.DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
     # Relationships
-    words: list[Word] = db.relationship(
+    words = db.relationship(
         "Word", backref="game_slip", lazy="select", cascade="all, delete-orphan"
     )
-    players: list[Player] = db.relationship(
+    players = db.relationship(
         "Player", backref="game_slip", lazy="select", cascade="all, delete-orphan"
     )
-    sessions: list[GameSession] = db.relationship(
+    sessions = db.relationship(
         "GameSession", backref="game_slip", lazy="select", cascade="all, delete-orphan"
     )
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
-            "title": self.title,
+            "id":         self.id,
+            "title":      self.title,
             "is_finished": self.is_finished,
-            "words": [w.to_dict() for w in self.words],
-            "players": [p.to_dict() for p in self.players],
+            "words":      [w.to_dict() for w in self.words],
+            "players":    [p.to_dict() for p in self.players],
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -80,17 +77,17 @@ class Word(db.Model):
 
     __tablename__ = "word"
 
-    id: int = db.Column(db.Integer, primary_key=True)
-    text: str = db.Column(db.String(200), nullable=False)
-    position: int = db.Column(db.Integer, default=0, nullable=False)
-    game_slip_id: int = db.Column(
+    id           = db.Column(db.Integer, primary_key=True)
+    text         = db.Column(db.String(200), nullable=False)
+    position     = db.Column(db.Integer, default=0, nullable=False)
+    game_slip_id = db.Column(
         db.Integer, db.ForeignKey("game_slip.id", ondelete="CASCADE"), nullable=False
     )
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
-            "text": self.text,
+            "id":       self.id,
+            "text":     self.text,
             "position": self.position,
         }
 
@@ -103,22 +100,22 @@ class Player(db.Model):
 
     __tablename__ = "player"
 
-    id: int = db.Column(db.Integer, primary_key=True)
-    name: str = db.Column(db.String(80), nullable=False)
-    position: int = db.Column(db.Integer, default=0, nullable=False)
-    game_slip_id: int = db.Column(
+    id           = db.Column(db.Integer, primary_key=True)
+    name         = db.Column(db.String(80), nullable=False)
+    position     = db.Column(db.Integer, default=0, nullable=False)
+    game_slip_id = db.Column(
         db.Integer, db.ForeignKey("game_slip.id", ondelete="CASCADE"), nullable=False
     )
 
     # Scores across all sessions
-    scores: list[Score] = db.relationship(
+    scores = db.relationship(
         "Score", backref="player", lazy="select", cascade="all, delete-orphan"
     )
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
-            "name": self.name,
+            "id":       self.id,
+            "name":     self.name,
             "position": self.position,
         }
 
@@ -131,28 +128,26 @@ class GameSession(db.Model):
 
     __tablename__ = "game_session"
 
-    id: int = db.Column(db.Integer, primary_key=True)
-    game_slip_id: int = db.Column(
+    id           = db.Column(db.Integer, primary_key=True)
+    game_slip_id = db.Column(
         db.Integer, db.ForeignKey("game_slip.id", ondelete="CASCADE"), nullable=False
     )
-    started_at: datetime = db.Column(
-        db.DateTime(timezone=True), default=_utcnow, nullable=False
-    )
-    ended_at: datetime | None = db.Column(db.DateTime(timezone=True), nullable=True)
-    is_active: bool = db.Column(db.Boolean, default=True, nullable=False)
+    started_at   = db.Column(db.DateTime(timezone=True), default=_utcnow, nullable=False)
+    ended_at     = db.Column(db.DateTime(timezone=True), nullable=True)
+    is_active    = db.Column(db.Boolean, default=True, nullable=False)
 
-    scores: list[Score] = db.relationship(
+    scores = db.relationship(
         "Score", backref="session", lazy="select", cascade="all, delete-orphan"
     )
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
+            "id":           self.id,
             "game_slip_id": self.game_slip_id,
-            "is_active": self.is_active,
-            "started_at": self.started_at.isoformat(),
-            "ended_at": self.ended_at.isoformat() if self.ended_at else None,
-            "scores": [s.to_dict() for s in self.scores],
+            "is_active":    self.is_active,
+            "started_at":   self.started_at.isoformat(),
+            "ended_at":     self.ended_at.isoformat() if self.ended_at else None,
+            "scores":       [s.to_dict() for s in self.scores],
         }
 
     def __repr__(self) -> str:
@@ -164,23 +159,21 @@ class Score(db.Model):
 
     __tablename__ = "score"
 
-    id: int = db.Column(db.Integer, primary_key=True)
-    session_id: int = db.Column(
-        db.Integer,
-        db.ForeignKey("game_session.id", ondelete="CASCADE"),
-        nullable=False,
+    id         = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(
+        db.Integer, db.ForeignKey("game_session.id", ondelete="CASCADE"), nullable=False
     )
-    player_id: int = db.Column(
+    player_id  = db.Column(
         db.Integer, db.ForeignKey("player.id", ondelete="CASCADE"), nullable=False
     )
-    points: int = db.Column(db.Integer, default=0, nullable=False)
+    points     = db.Column(db.Integer, default=0, nullable=False)
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
-            "player_id": self.player_id,
+            "id":          self.id,
+            "player_id":   self.player_id,
             "player_name": self.player.name if self.player else "",
-            "points": self.points,
+            "points":      self.points,
         }
 
     def __repr__(self) -> str:

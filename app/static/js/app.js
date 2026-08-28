@@ -618,8 +618,8 @@ function openGameModal() {
   gameWordTotal.textContent = gameState.words.length;
   showCurrentWord();
 
-  // Reset controls — NEXT starts disabled (no wrong has happened yet)
-  setGameControls({ correct: true, wrong: true, next: false, end: true });
+  // Reset controls — NEXT always enabled so conductor can skip any word
+  setGameControls({ correct: true, wrong: true, next: true, end: true });
 
   openModal(gameModal);
 }
@@ -787,7 +787,7 @@ function nextWord() {
     return;
   }
   showCurrentWord();
-  setGameControls({ correct: true, wrong: true, next: false, end: true });
+  setGameControls({ correct: true, wrong: true, next: true, end: true });
 }
 
 async function handleGameOver() {

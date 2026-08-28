@@ -713,16 +713,20 @@ a:hover { text-decoration: underline; }
 
 .word-display {
   font-family: var(--font-display);
-  font-size: clamp(3.5rem, 10vw, 8rem);
+  font-size: clamp(2.8rem, 8vw, 7rem);
   font-weight: 800;
-  letter-spacing: .12em;
+  letter-spacing: .06em;
   text-transform: uppercase;
   color: var(--clr-text);
   text-align: center;
-  word-break: break-all;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.3;
   text-shadow: 0 2px 20px rgba(108,99,255,.4);
   animation: wordFadeIn .4s cubic-bezier(.34,1.56,.64,1);
   user-select: none;
+  max-width: 100%;
+  padding: 0 1rem;
 }
 
 @keyframes wordFadeIn {

@@ -638,15 +638,55 @@ function renderScoreboard() {
   });
 }
 
+/**
+ * Fisher-Yates shuffle on an array — mutates in place and returns it.
+ */
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Shuffle the characters of a word, guaranteeing the result is different
+ * from the original (up to 30 attempts). Returns the shuffled characters
+ * separated by spaces so each letter reads clearly on screen.
+ */
+function shuffleWord(word) {
+  const chars = word.toUpperCase().split("");
+
+  // Single-character or all-same-character words can't be shuffled differently
+  const allSame = chars.every(c => c === chars[0]);
+  if (chars.length <= 1 || allSame) {
+    return chars.join(" ");
+  }
+
+  const original = chars.join("");
+  let shuffled;
+  let attempts = 0;
+  do {
+    shuffled = shuffleArray([...chars]).join("");
+    attempts++;
+  } while (shuffled === original && attempts < 30);
+
+  // Space-separate every character for clear readability
+  return shuffled.split("").join("  ");
+}
+
 function showCurrentWord() {
   const word = gameState.words[gameState.currentIndex];
   gameWordIndex.textContent = gameState.currentIndex + 1;
 
-  // Animate new word
+  // Shuffle characters for display — the conductor knows the real word
+  const displayed = shuffleWord(word);
+
+  // Animate new word in
   wordDisplay.style.animation = "none";
-  wordDisplay.offsetHeight; // reflow
+  wordDisplay.offsetHeight; // reflow to restart animation
   wordDisplay.style.animation = "";
-  wordDisplay.textContent = word;
+  wordDisplay.textContent = displayed;
 }
 
 function setGameControls({ correct, wrong, next, end }) {

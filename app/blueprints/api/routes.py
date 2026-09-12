@@ -249,25 +249,36 @@ def start_session(slip_id: int):
 @bp.route("/sessions/<int:session_id>/score", methods=["POST"])
 def record_score(session_id: int):
     """
-    Record a CORRECT answer: add 3 points to the player.
-    Body: { "player_id": <int> }
+    Record a CORRECT answer: add 3 points to one or more players.
+    Body: { "player_id": <int> }               — single player (turns mode)
+       OR { "player_ids": [<int>, ...] }        — multiple players (buzz-in mode)
     """
     session = db.get_or_404(GameSession, session_id)
     if not session.is_active:
         return _error("Session is no longer active.", 403)
 
     data = request.get_json(silent=True) or {}
-    player_id = data.get("player_id")
-    if player_id is None:
-        return _error("player_id is required.")
 
-    score = Score.query.filter_by(
-        session_id=session_id, player_id=player_id
-    ).first()
-    if score is None:
-        return _error("Player not found in this session.", 404)
+    # Normalise: accept either player_id (single) or player_ids (list)
+    if "player_ids" in data:
+        raw_ids = data["player_ids"]
+        if not isinstance(raw_ids, list) or len(raw_ids) == 0:
+            return _error("player_ids must be a non-empty list.")
+        player_ids = raw_ids
+    elif "player_id" in data:
+        player_ids = [data["player_id"]]
+    else:
+        return _error("player_id or player_ids is required.")
 
-    score.points += 3
+    # Award 3 points to each player
+    for pid in player_ids:
+        score = Score.query.filter_by(
+            session_id=session_id, player_id=pid
+        ).first()
+        if score is None:
+            return _error(f"Player {pid} not found in this session.", 404)
+        score.points += 3
+
     db.session.commit()
 
     # Return all scores for this session

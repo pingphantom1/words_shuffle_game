@@ -8,6 +8,8 @@
  *  - All modal interactions
  *  - Celebratory star animations
  *  - Toast notifications
+ *  - Game mode: "turns" (take turns) | "buzzin" (first to answer)
+ *  - Correct answer sound (synthesised ding)
  */
 
 "use strict";
@@ -27,14 +29,16 @@ const API = {
 
 /** Live game state (populated when a session is started). */
 const gameState = {
-  sessionId:       null,
-  words:           [],        // shuffled word list
-  currentIndex:    0,
-  players:         [],        // [{ id, name, position }]
-  scores:          {},        // { playerId: points }
+  sessionId:          null,
+  words:              [],        // shuffled word list
+  currentIndex:       0,
+  players:            [],        // [{ id, name, position }]
+  scores:             {},        // { playerId: points }
   currentPlayerIndex: 0,
-  waitingForNext:  false,     // true after a WRONG answer
-  slipId:          null,
+  waitingForNext:     false,     // true after a WRONG answer
+  slipId:             null,
+  mode:               "turns",   // "turns" | "buzzin"
+  selectedPlayerIds:  new Set(), // buzz-in mode: which players are tapped
 };
 
 /** Which slip is being edited (null = creating new). */
@@ -43,6 +47,61 @@ let editingSlipId = null;
 let pendingDeleteSlipId = null;
 /** Which slip is pending a START action. */
 let pendingStartSlipId = null;
+
+// ---------------------------------------------------------------------------
+// Correct Answer Sound (Web Audio API — no external file needed)
+// ---------------------------------------------------------------------------
+
+let _audioCtx = null;
+
+function getAudioCtx() {
+  if (!_audioCtx) {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return _audioCtx;
+}
+
+/**
+ * Play the classic game-show "ding ding ding" correct-answer sound.
+ * Three rising bell tones synthesised entirely in-browser.
+ */
+function playCorrectSound() {
+  try {
+    const ctx = getAudioCtx();
+
+    // Resume in case browser suspended the context
+    if (ctx.state === "suspended") ctx.resume();
+
+    // Three notes: C6, E6, G6 — a quick rising arpeggio
+    const notes = [
+      { freq: 1046.50, startAt: 0.00 },  // C6
+      { freq: 1318.51, startAt: 0.12 },  // E6
+      { freq: 1567.98, startAt: 0.24 },  // G6
+    ];
+
+    notes.forEach(({ freq, startAt }) => {
+      const oscillator = ctx.createOscillator();
+      const gainNode   = ctx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(freq, ctx.currentTime + startAt);
+
+      // Amplitude: sharp attack, smooth decay (bell-like)
+      const t = ctx.currentTime + startAt;
+      gainNode.gain.setValueAtTime(0, t);
+      gainNode.gain.linearRampToValueAtTime(0.6, t + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+
+      oscillator.start(t);
+      oscillator.stop(t + 0.65);
+    });
+  } catch (e) {
+    // Audio playback is non-critical — silently ignore errors
+  }
+}
 
 // ---------------------------------------------------------------------------
 // CSRF helpers
@@ -114,12 +173,15 @@ const playerList       = document.getElementById("playerList");
 const btnAddPlayer     = document.getElementById("btnAddPlayer");
 const btnNewSlip       = document.getElementById("btnNewSlip");
 
-// Start / choose player modal
-const startModal       = document.getElementById("startModal");
-const startModalClose  = document.getElementById("startModalClose");
-const startModalCancel = document.getElementById("startModalCancel");
-const startModalConfirm= document.getElementById("startModalConfirm");
-const playerChooseList = document.getElementById("playerChooseList");
+// Start / mode select modal
+const startModal          = document.getElementById("startModal");
+const startModalClose     = document.getElementById("startModalClose");
+const startModalCancel    = document.getElementById("startModalCancel");
+const startModalConfirm   = document.getElementById("startModalConfirm");
+const playerChooseList    = document.getElementById("playerChooseList");
+const firstPlayerSection  = document.getElementById("firstPlayerSection");
+const modeTurnsBtn        = document.getElementById("modeTurns");
+const modeBuzzInBtn       = document.getElementById("modeBuzzIn");
 
 // Game modal
 const gameModal        = document.getElementById("gameModal");
@@ -498,15 +560,12 @@ async function handleToggleFinish(card) {
 }
 
 // ---------------------------------------------------------------------------
-// Start Game — Choose First Player Modal
+// Start Game — Mode Select + Choose First Player Modal
 // ---------------------------------------------------------------------------
 
 function openStartModal(card) {
   const slipId = Number(card.dataset.slipId);
   pendingStartSlipId = slipId;
-
-  // Read players from the cached card data — we'll fetch fresh when confirming
-  // For now, we fetch the slip to display player names
   fetchAndShowStartModal(slipId);
 }
 
@@ -529,34 +588,11 @@ async function fetchAndShowStartModal(slipId) {
       return;
     }
 
-    // Build player choose list
-    playerChooseList.innerHTML = "";
-    let selectedPlayerId = null;
+    // Reset mode UI to default (turns)
+    setActiveMode("turns");
 
-    players.forEach(p => {
-      const btn2 = document.createElement("button");
-      btn2.type = "button";
-      btn2.className = "player-choose-btn";
-      btn2.dataset.playerId = p.id;
-      btn2.innerHTML = `
-        <span class="player-choose-avatar">${escapeHtml(p.name.charAt(0).toUpperCase())}</span>
-        <span>${escapeHtml(p.name)}</span>
-      `;
-      btn2.addEventListener("click", () => {
-        playerChooseList.querySelectorAll(".player-choose-btn").forEach(b => b.classList.remove("selected"));
-        btn2.classList.add("selected");
-        selectedPlayerId = p.id;
-        startModalConfirm.disabled = false;
-      });
-      playerChooseList.appendChild(btn2);
-    });
-
-    // Reset confirm button
-    startModalConfirm.disabled = true;
-    selectedPlayerId = null;
-
-    // Wire confirm
-    startModalConfirm.onclick = () => startGame(slipId, selectedPlayerId);
+    // Build player choose list (for turns mode)
+    buildPlayerChooseList(players, null);
 
     openModal(startModal);
   } catch (err) {
@@ -566,6 +602,66 @@ async function fetchAndShowStartModal(slipId) {
   }
 }
 
+/**
+ * Set the active game mode in the UI.
+ * Toggles visibility of the first-player section.
+ */
+function setActiveMode(mode) {
+  const isTurns = mode === "turns";
+
+  modeTurnsBtn.classList.toggle("mode-btn--selected", isTurns);
+  modeBuzzInBtn.classList.toggle("mode-btn--selected", !isTurns);
+  modeTurnsBtn.setAttribute("aria-pressed", isTurns ? "true" : "false");
+  modeBuzzInBtn.setAttribute("aria-pressed", isTurns ? "false" : "true");
+
+  firstPlayerSection.hidden = !isTurns;
+
+  // In buzz-in mode, no first player required — enable Start immediately
+  if (!isTurns) {
+    startModalConfirm.disabled = false;
+  } else {
+    // Re-check whether a player is currently selected
+    const anySelected = playerChooseList?.querySelector(".player-choose-btn.selected");
+    startModalConfirm.disabled = !anySelected;
+  }
+}
+
+// Mode button event listeners
+modeTurnsBtn?.addEventListener("click", () => setActiveMode("turns"));
+modeBuzzInBtn?.addEventListener("click", () => setActiveMode("buzzin"));
+
+/**
+ * Build the "choose first player" list inside the start modal.
+ */
+function buildPlayerChooseList(players, onSelectCallback) {
+  playerChooseList.innerHTML = "";
+  let selectedPlayerId = null;
+
+  players.forEach(p => {
+    const btn2 = document.createElement("button");
+    btn2.type = "button";
+    btn2.className = "player-choose-btn";
+    btn2.dataset.playerId = p.id;
+    btn2.innerHTML = `
+      <span class="player-choose-avatar">${escapeHtml(p.name.charAt(0).toUpperCase())}</span>
+      <span>${escapeHtml(p.name)}</span>
+    `;
+    btn2.addEventListener("click", () => {
+      playerChooseList.querySelectorAll(".player-choose-btn").forEach(b => b.classList.remove("selected"));
+      btn2.classList.add("selected");
+      selectedPlayerId = p.id;
+      startModalConfirm.disabled = false;
+    });
+    playerChooseList.appendChild(btn2);
+  });
+
+  // Wire confirm button — captures selectedPlayerId via closure
+  startModalConfirm.onclick = () => {
+    const mode = modeTurnsBtn.classList.contains("mode-btn--selected") ? "turns" : "buzzin";
+    startGame(pendingStartSlipId, mode, selectedPlayerId);
+  };
+}
+
 startModalClose?.addEventListener("click",  () => closeModal(startModal));
 startModalCancel?.addEventListener("click", () => closeModal(startModal));
 
@@ -573,28 +669,43 @@ startModalCancel?.addEventListener("click", () => closeModal(startModal));
 // Start Game — kick off the session
 // ---------------------------------------------------------------------------
 
-async function startGame(slipId, firstPlayerId) {
+async function startGame(slipId, mode, firstPlayerId) {
+  // In buzz-in mode, first_player_id is not required
+  if (mode === "turns" && !firstPlayerId) {
+    showToast("Please choose who goes first.", "error");
+    return;
+  }
+
   setLoading(startModalConfirm, true);
   try {
+    const body = mode === "turns"
+      ? { first_player_id: firstPlayerId }
+      : { first_player_id: null };
+
     const result = await apiFetch(API.startSession(slipId), {
       method: "POST",
-      body: JSON.stringify({ first_player_id: firstPlayerId }),
+      body: JSON.stringify(body),
     });
     const data = result.data;
 
     // Populate game state
-    gameState.sessionId          = data.session_id;
-    gameState.words              = data.words;
-    gameState.players            = data.players;
-    gameState.scores             = data.scores;
-    gameState.slipId             = slipId;
-    gameState.waitingForNext     = false;
+    gameState.sessionId         = data.session_id;
+    gameState.words             = data.words;
+    gameState.players           = data.players;
+    gameState.scores            = data.scores;
+    gameState.slipId            = slipId;
+    gameState.waitingForNext    = false;
+    gameState.mode              = mode;
+    gameState.selectedPlayerIds = new Set();
 
-    // Figure out current player index from first_player_id
-    gameState.currentPlayerIndex = gameState.players.findIndex(
-      p => p.id === data.first_player_id
-    );
-    if (gameState.currentPlayerIndex === -1) gameState.currentPlayerIndex = 0;
+    if (mode === "turns") {
+      gameState.currentPlayerIndex = gameState.players.findIndex(
+        p => p.id === data.first_player_id
+      );
+      if (gameState.currentPlayerIndex === -1) gameState.currentPlayerIndex = 0;
+    } else {
+      gameState.currentPlayerIndex = 0;
+    }
 
     gameState.currentIndex = 0;
 
@@ -612,14 +723,11 @@ async function startGame(slipId, firstPlayerId) {
 // ---------------------------------------------------------------------------
 
 function openGameModal() {
-  // Build scoreboard
   renderScoreboard();
 
-  // Display first word
   gameWordTotal.textContent = gameState.words.length;
   showCurrentWord();
 
-  // Reset controls — NEXT always enabled so conductor can skip any word
   setGameControls({ correct: true, wrong: true, next: true, end: true });
 
   openModal(gameModal);
@@ -629,14 +737,56 @@ function renderScoreboard() {
   scoreboard.innerHTML = "";
   gameState.players.forEach((player, idx) => {
     const card = document.createElement("div");
-    card.className = `score-card${idx === gameState.currentPlayerIndex ? " active-player" : ""}`;
+    const isBuzzIn = gameState.mode === "buzzin";
+
+    card.className = "score-card";
+    if (!isBuzzIn && idx === gameState.currentPlayerIndex) {
+      card.classList.add("active-player");
+    }
+    if (isBuzzIn) {
+      card.classList.add("score-card--selectable");
+      card.setAttribute("role", "button");
+      card.setAttribute("tabindex", "0");
+      card.setAttribute("aria-pressed", "false");
+      card.title = "Tap to select this player as correct";
+    }
+
     card.id = `scoreCard-${player.id}`;
+    card.dataset.playerId = player.id;
     card.innerHTML = `
       <span class="score-card__name" title="${escapeHtml(player.name)}">${escapeHtml(player.name)}</span>
       <span class="score-card__points" id="scorePoints-${player.id}">${gameState.scores[player.id] ?? 0}</span>
     `;
+
+    if (isBuzzIn) {
+      // Click or Enter/Space to toggle selection
+      const toggleCard = () => togglePlayerSelection(player.id, card);
+      card.addEventListener("click", toggleCard);
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleCard(); }
+      });
+    }
+
     scoreboard.appendChild(card);
   });
+}
+
+/**
+ * Toggle a player's selection in buzz-in mode.
+ */
+function togglePlayerSelection(playerId, cardEl) {
+  if (gameState.selectedPlayerIds.has(playerId)) {
+    gameState.selectedPlayerIds.delete(playerId);
+    cardEl.classList.remove("score-card--selected");
+    cardEl.setAttribute("aria-pressed", "false");
+  } else {
+    gameState.selectedPlayerIds.add(playerId);
+    cardEl.classList.add("score-card--selected");
+    cardEl.setAttribute("aria-pressed", "true");
+  }
+
+  // Enable CORRECT only when at least one player is selected
+  btnCorrect.disabled = gameState.selectedPlayerIds.size === 0;
 }
 
 /**
@@ -658,10 +808,8 @@ function shuffleArray(arr) {
  * e.g. "1 PETER" → "E  T  R  1  E  P"
  */
 function shuffleWord(word) {
-  // Strip all spaces — treat the entry as a sequence of non-space characters
   const chars = word.toUpperCase().replace(/\s+/g, "").split("");
 
-  // Edge case: single character or all-same characters
   const allSame = chars.every(c => c === chars[0]);
   if (chars.length <= 1 || allSame) {
     return chars.join("  ");
@@ -675,7 +823,6 @@ function shuffleWord(word) {
     attempts++;
   } while (shuffled === original && attempts < 30);
 
-  // Space-separate every character for clear readability
   return shuffled.split("").join("  ");
 }
 
@@ -683,24 +830,28 @@ function showCurrentWord() {
   const word = gameState.words[gameState.currentIndex];
   gameWordIndex.textContent = gameState.currentIndex + 1;
 
-  // Shuffle characters for display — the conductor knows the real word
   const displayed = shuffleWord(word);
 
-  // Animate new word in
   wordDisplay.style.animation = "none";
-  wordDisplay.offsetHeight; // reflow to restart animation
+  wordDisplay.offsetHeight;
   wordDisplay.style.animation = "";
   wordDisplay.textContent = displayed;
 }
 
 function setGameControls({ correct, wrong, next, end }) {
-  btnCorrect.disabled = !correct;
-  btnWrong.disabled   = !wrong;
-  btnNext.disabled    = !next;
-  btnEnd.disabled     = !end;
+  // In buzz-in mode, CORRECT requires a selection — handled separately
+  if (gameState.mode === "buzzin" && correct) {
+    btnCorrect.disabled = gameState.selectedPlayerIds.size === 0;
+  } else {
+    btnCorrect.disabled = !correct;
+  }
+  btnWrong.disabled = !wrong;
+  btnNext.disabled  = !next;
+  btnEnd.disabled   = !end;
 }
 
 function highlightCurrentPlayer() {
+  if (gameState.mode === "buzzin") return; // no turn-highlighting in buzz-in mode
   scoreboard.querySelectorAll(".score-card").forEach(c => c.classList.remove("active-player"));
   const current = gameState.players[gameState.currentPlayerIndex];
   if (current) {
@@ -709,6 +860,7 @@ function highlightCurrentPlayer() {
 }
 
 function advancePlayer() {
+  if (gameState.mode === "buzzin") return; // no player rotation in buzz-in mode
   gameState.currentPlayerIndex =
     (gameState.currentPlayerIndex + 1) % gameState.players.length;
   highlightCurrentPlayer();
@@ -717,18 +869,32 @@ function advancePlayer() {
 // ── CORRECT ──
 btnCorrect?.addEventListener("click", async () => {
   if (btnCorrect.disabled) return;
-  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+
+  // Determine which players get points
+  let playerIdsToScore;
+  if (gameState.mode === "buzzin") {
+    playerIdsToScore = Array.from(gameState.selectedPlayerIds);
+    if (playerIdsToScore.length === 0) return; // safety guard
+  } else {
+    playerIdsToScore = [gameState.players[gameState.currentPlayerIndex].id];
+  }
+
+  // Play the correct answer sound
+  playCorrectSound();
 
   setGameControls({ correct: false, wrong: false, next: false, end: false });
 
   try {
+    const body = playerIdsToScore.length === 1
+      ? { player_id: playerIdsToScore[0] }
+      : { player_ids: playerIdsToScore };
+
     const result = await apiFetch(API.recordScore(gameState.sessionId), {
       method: "POST",
-      body: JSON.stringify({ player_id: currentPlayer.id }),
+      body: JSON.stringify(body),
     });
-    // result.data = { playerId: points, ... }
     gameState.scores = result.data;
-    updateScoreDisplay(currentPlayer.id);
+    playerIdsToScore.forEach(pid => updateScoreDisplay(pid));
   } catch (err) {
     showToast("Could not record score: " + err.message, "error");
   }
@@ -740,7 +906,18 @@ btnCorrect?.addEventListener("click", async () => {
 
   setTimeout(() => {
     hideFeedback();
-    advancePlayer();
+
+    // Clear selections in buzz-in mode
+    if (gameState.mode === "buzzin") {
+      gameState.selectedPlayerIds.clear();
+      scoreboard.querySelectorAll(".score-card--selected").forEach(c => {
+        c.classList.remove("score-card--selected");
+        c.setAttribute("aria-pressed", "false");
+      });
+    } else {
+      advancePlayer();
+    }
+
     nextWord();
   }, 2000);
 });
@@ -748,25 +925,37 @@ btnCorrect?.addEventListener("click", async () => {
 // ── WRONG ──
 btnWrong?.addEventListener("click", () => {
   if (btnWrong.disabled) return;
-  // Disable all controls during the 1s flash
   setGameControls({ correct: false, wrong: false, next: false, end: false });
 
   showFeedback("wrong");
 
   setTimeout(() => {
     hideFeedback();
-    // Move to next player — the same word stays on screen
-    advancePlayer();
-    // Re-enable all controls so the next player can attempt the same word
+
+    if (gameState.mode === "turns") {
+      // Move to next player — same word stays
+      advancePlayer();
+    }
+    // In buzz-in mode: just re-enable controls for another attempt
     setGameControls({ correct: true, wrong: true, next: true, end: true });
   }, 1000);
 });
 
 // ── NEXT ──
-// Skips the current word without awarding points and moves to the next player.
 btnNext?.addEventListener("click", () => {
   if (btnNext.disabled) return;
-  advancePlayer();
+
+  // Clear buzz-in selections on skip
+  if (gameState.mode === "buzzin") {
+    gameState.selectedPlayerIds.clear();
+    scoreboard.querySelectorAll(".score-card--selected").forEach(c => {
+      c.classList.remove("score-card--selected");
+      c.setAttribute("aria-pressed", "false");
+    });
+  } else {
+    advancePlayer();
+  }
+
   nextWord();
 });
 
@@ -787,7 +976,6 @@ btnEnd?.addEventListener("click", async () => {
 function nextWord() {
   gameState.currentIndex++;
   if (gameState.currentIndex >= gameState.words.length) {
-    // All words exhausted — end naturally
     handleGameOver();
     return;
   }
@@ -810,7 +998,7 @@ function updateScoreDisplay(playerId) {
   if (!el) return;
   el.textContent = gameState.scores[playerId] ?? 0;
   el.classList.remove("bump");
-  el.offsetHeight; // reflow for re-animation
+  el.offsetHeight;
   el.classList.add("bump");
 }
 
@@ -819,6 +1007,7 @@ function resetGameState() {
     sessionId: null, words: [], currentIndex: 0,
     players: [], scores: {}, currentPlayerIndex: 0,
     waitingForNext: false, slipId: null,
+    mode: "turns", selectedPlayerIds: new Set(),
   });
 }
 
@@ -827,7 +1016,6 @@ function resetGameState() {
 function showFeedback(type, word = null) {
   hideFeedback();
   if (type === "correct") {
-    // Show the actual word so everyone can see what it was
     feedbackWord.textContent = word ? `THE WORD IS  ${word.toUpperCase()}` : "";
     feedbackCorrect.hidden = false;
   } else {
@@ -860,7 +1048,7 @@ function spawnStars(count = 60) {
     const angle   = Math.random() * 2 * Math.PI;
     const radius  = 150 + Math.random() * 300;
     const dx      = Math.cos(angle) * radius;
-    const dy      = Math.sin(angle) * radius - 100; // bias upward
+    const dy      = Math.sin(angle) * radius - 100;
     const size    = 8 + Math.random() * 16;
     const color   = colors[Math.floor(Math.random() * colors.length)];
     const delay   = Math.random() * 300;

@@ -149,19 +149,41 @@
 
 
 <!-- ════════════════════════════════════════════════════════════════
-     MODAL: Choose First Player (before game starts)
+     MODAL: Choose Game Mode & First Player (before game starts)
      ════════════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="startModal" role="dialog" aria-modal="true" aria-labelledby="startModalTitle" hidden>
   <div class="modal modal--sm">
     <div class="modal__header">
-      <h2 class="modal__title" id="startModalTitle">Who Goes First?</h2>
+      <h2 class="modal__title" id="startModalTitle">Set Up Game</h2>
       <button class="modal__close" id="startModalClose" aria-label="Close">&times;</button>
     </div>
     <div class="modal__body">
-      <p class="start-modal__desc">Choose the player who will answer first.</p>
-      <div class="player-choose-list" id="playerChooseList">
-        <!-- Injected by JS -->
+
+      <!-- Mode selector -->
+      <div class="form-group">
+        <label class="form-label">Game Mode</label>
+        <div class="mode-selector" role="radiogroup" aria-label="Game mode">
+          <button type="button" class="mode-btn mode-btn--selected" id="modeTurns" data-mode="turns" aria-pressed="true">
+            <span class="mode-btn__icon">🔄</span>
+            <span class="mode-btn__label">Take Turns</span>
+            <span class="mode-btn__desc">Players answer in order, one at a time</span>
+          </button>
+          <button type="button" class="mode-btn" id="modeBuzzIn" data-mode="buzzin" aria-pressed="false">
+            <span class="mode-btn__icon">⚡</span>
+            <span class="mode-btn__label">First to Answer</span>
+            <span class="mode-btn__desc">Conductor taps whoever got it right, then clicks CORRECT</span>
+          </button>
+        </div>
       </div>
+
+      <!-- First player (only shown in turns mode) -->
+      <div id="firstPlayerSection">
+        <p class="start-modal__desc">Choose the player who will answer first.</p>
+        <div class="player-choose-list" id="playerChooseList">
+          <!-- Injected by JS -->
+        </div>
+      </div>
+
     </div>
     <div class="modal__footer">
       <button class="btn btn--ghost" id="startModalCancel">Cancel</button>

@@ -18,13 +18,20 @@
 // Constants & State
 // ---------------------------------------------------------------------------
 
+/**
+ * Root prefix for all API calls.
+ * Empty string when running at "/" (local dev).
+ * Set to e.g. "/myapp" when deployed at a subpath on PythonAnywhere.
+ */
+const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content.replace(/\/$/, "") || "";
+
 const API = {
-  slips:        "/api/slips",
-  slip:         (id)        => `/api/slips/${id}`,
-  toggleFinish: (id)        => `/api/slips/${id}/toggle-finish`,
-  startSession: (id)        => `/api/slips/${id}/start`,
-  recordScore:  (sessionId) => `/api/sessions/${sessionId}/score`,
-  endSession:   (sessionId) => `/api/sessions/${sessionId}/end`,
+  slips:        `${APP_ROOT}/api/slips`,
+  slip:         (id)        => `${APP_ROOT}/api/slips/${id}`,
+  toggleFinish: (id)        => `${APP_ROOT}/api/slips/${id}/toggle-finish`,
+  startSession: (id)        => `${APP_ROOT}/api/slips/${id}/start`,
+  recordScore:  (sessionId) => `${APP_ROOT}/api/sessions/${sessionId}/score`,
+  endSession:   (sessionId) => `${APP_ROOT}/api/sessions/${sessionId}/end`,
 };
 
 /** Live game state (populated when a session is started). */

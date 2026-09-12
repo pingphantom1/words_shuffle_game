@@ -54,6 +54,9 @@
   <!-- ── CSRF Token (available to JS) ─────────────────────────── -->
   <meta name="csrf-token" content="{{ csrf_token() }}" />
 
+  <!-- ── App root prefix (for subpath deployments) ────────────── -->
+  <meta name="app-root" content="{{ request.script_root }}" />
+
   <!-- ── Main JavaScript ───────────────────────────────────────── -->
   <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
   {% block extra_scripts %}{% endblock %}

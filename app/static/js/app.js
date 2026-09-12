@@ -887,7 +887,7 @@ btnCorrect?.addEventListener("click", async () => {
   }
 
   // Play the correct answer sound
-  playCorrectSound();
+  // playCorrectSound(); // disabled
 
   setGameControls({ correct: false, wrong: false, next: false, end: false });
 
@@ -926,7 +926,7 @@ btnCorrect?.addEventListener("click", async () => {
     }
 
     nextWord();
-  }, 2000);
+  }, 125);
 });
 
 // ── WRONG ──
@@ -945,7 +945,7 @@ btnWrong?.addEventListener("click", () => {
     }
     // In buzz-in mode: just re-enable controls for another attempt
     setGameControls({ correct: true, wrong: true, next: true, end: true });
-  }, 1000);
+  }, 62);
 });
 
 // ── NEXT ──

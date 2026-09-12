@@ -1108,6 +1108,56 @@ function escapeHtml(str) {
 }
 
 // ---------------------------------------------------------------------------
+// Theme Toggle (Light / Dark Mode)
+// ---------------------------------------------------------------------------
+
+(function initTheme() {
+  const html        = document.documentElement;
+  const STORAGE_KEY = "wsg-theme";
+  const DARK        = "dark";
+  const LIGHT       = "light";
+
+  /** Apply a theme to <html> and update the toggle button. */
+  function applyTheme(theme) {
+    html.setAttribute("data-theme", theme);
+
+    const btn   = document.getElementById("themeToggle");
+    if (!btn) return;
+
+    const isDark = theme === DARK;
+    const icon   = btn.querySelector(".theme-toggle__icon");
+    const label  = btn.querySelector(".theme-toggle__label");
+
+    icon.textContent  = isDark ? "☀️" : "🌙";
+    label.textContent = isDark ? "Light mode" : "Dark mode";
+    btn.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+  }
+
+  /** Toggle between light and dark and persist. */
+  function toggleTheme() {
+    const current = html.getAttribute("data-theme") || LIGHT;
+    const next    = current === DARK ? LIGHT : DARK;
+    localStorage.setItem(STORAGE_KEY, next);
+    applyTheme(next);
+  }
+
+  // On load: restore saved preference (default is light, already set in HTML)
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved === DARK || saved === LIGHT) {
+    applyTheme(saved);
+  }
+  // If no saved preference the HTML default ("light") stays — button label is set here
+  else {
+    applyTheme(LIGHT);
+  }
+
+  // Wire button after DOM is ready
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("themeToggle")?.addEventListener("click", toggleTheme);
+  });
+})();
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 

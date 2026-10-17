@@ -22,6 +22,10 @@ build/
 *.pyo
 *.pyc
 
+
+# wsgi file
+wsgi.py
+
 # SQLite Database
 *.db
 *.sqlite
